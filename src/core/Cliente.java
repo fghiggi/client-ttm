@@ -1,6 +1,7 @@
 package core;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ConnectException;
@@ -12,6 +13,15 @@ public class Cliente extends Observable implements Runnable {
     PrintWriter out;
     BufferedReader in;
     Thread t;
+    Integer passo = 0;
+
+    static final String RECEBE_MENSAGEM_PUCLICA = "$:->mensagem";
+    static final String RECEBE_MENSAGEM_PRIVADA = "$:->privado";
+    static final String RECEBE_USUARIO = "$:->usuario";
+    static final String RECEBE_SAIR_SALA = "$:->sair";
+    static final String ENVIO_MENSAGEM_PUCLICA = "/mensagem";
+    static final String ENVIO_MENSAGEM_PRIVADA = "/privado";
+    static final String ENVIO_LISTA = "/lista";
 
     private static final String CRLF = "\r\n"; // newline
 
@@ -41,13 +51,45 @@ public class Cliente extends Observable implements Runnable {
 
     public void enviarMensagem(String msg){
         String um = msg + CRLF;
+
+        if(passo == 1){
+            um += ENVIO_MENSAGEM_PUCLICA + " " + um;
+        }
         out.write(um);
+        out.flush();
+
+        if(passo == 0)
+            passo++;
+    }
+
+    public void enviarMensagem(String msg, String destino){
+        String um = msg + CRLF;
+
+        out.write(ENVIO_MENSAGEM_PRIVADA + " " + destino + " " + um);
         out.flush();
     }
 
     public void receberMensagem(){
         try {
-            notifyObservers(in.readLine());
+            String msg = in.readLine();
+            System.out.println(msg);
+            if(msg.startsWith(RECEBE_MENSAGEM_PUCLICA)) {
+                String x[] = msg.split(" ");
+
+                notifyObservers(x[1] + ": " + x[2]);
+            }else if(msg.startsWith(RECEBE_MENSAGEM_PRIVADA)) {
+                String x[] = msg.split(" ");
+
+                notifyObservers("MENSAGEM PRIVADA" + x[1] + ": " + x[2]);
+            } else if (msg.startsWith(RECEBE_SAIR_SALA)) {
+                String x[] = msg.split(" ");
+                notifyObservers(x[1] + " " + x[2] + " " + x[3] + " " + x[4]);
+            } else if(msg.startsWith(RECEBE_USUARIO)) {
+                msg += "@@u@@" + msg;
+                notifyObservers(msg);
+            } else {
+                notifyObservers(msg);
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -56,6 +98,18 @@ public class Cliente extends Observable implements Runnable {
     private void start(){
         t = new Thread(this);
         t.start();
+    }
+
+    public void stop(){
+        try {
+            passo++;
+            enviarMensagem("/sair");
+            out.close();
+            in.close();
+            s.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override

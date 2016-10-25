@@ -6,6 +6,8 @@ import view.ChatView;
  */
 public class init {
     public static void main(String[] args) {
-        new ChatView(new Cliente("127.0.0.1", 8088));
+        ChatView c = new ChatView();
+
+        c.startUp(new Cliente("127.0.0.1", 8088));
     }
 }
