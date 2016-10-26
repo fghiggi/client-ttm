@@ -73,33 +73,36 @@ public class Cliente extends Observable implements Runnable {
         out.flush();
     }
 
-    public void receberMensagem(){
+    public void receberMensagem() {
         try {
             String msg = in.readLine();
-            System.out.println(msg);
-            if(msg.startsWith(RECEBE_MENSAGEM_PUCLICA)) {
+
+            if (msg.startsWith(RECEBE_MENSAGEM_PUCLICA)) {
                 String x[] = msg.split(" ");
 
-                notifyObservers(x[1] + ": " + x[2]);
-            }else if(msg.startsWith(RECEBE_MENSAGEM_PRIVADA)) {
+                notifyObservers(msg.substring(RECEBE_MENSAGEM_PUCLICA.length() + 1));
+            } else if (msg.startsWith(RECEBE_MENSAGEM_PRIVADA)) {
                 String x[] = msg.split(" ");
 
                 notifyObservers("MENSAGEM PRIVADA" + x[1] + ": " + x[2]);
             } else if (msg.startsWith(RECEBE_SAIR_SALA)) {
                 String x[] = msg.split(" ");
                 notifyObservers(x[1] + " " + x[2] + " " + x[3] + " " + x[4]);
-            } else if(msg.startsWith(RECEBE_ENTROU_SALA)){
+            } else if (msg.startsWith(RECEBE_ENTROU_SALA)) {
                 String x[] = msg.split(" ");
                 notifyObservers("Entrou na sala " + x[1]);
-            } else if(msg.startsWith(RECEBE_USUARIO)) {
+            } else if (msg.startsWith(RECEBE_USUARIO)) {
                 passo++;
                 msg += "@@u@@" + msg;
                 notifyObservers(msg);
-            } else if(msg.startsWith(RECEBE_STATUS)) {
+            } else if (msg.startsWith(RECEBE_STATUS)) {
                 notifyObservers(msg.substring(RECEBE_STATUS.length() + 1));
             } else {
                 notifyObservers(msg);
             }
+        } catch (NullPointerException ex){
+            notifyObservers("O servidor caiu");
+            stop();
         } catch (Exception e) {
             e.printStackTrace();
         }
