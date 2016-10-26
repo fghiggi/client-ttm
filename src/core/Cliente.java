@@ -1,21 +1,23 @@
 package core;
 
-import com.sun.org.apache.regexp.internal.RE;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ConnectException;
 import java.net.Socket;
-import java.util.Observable;
+import java.net.SocketException;
+import java.util.ArrayList;
+import java.util.List;
 
-public class Cliente extends Observable implements Runnable {
+public class Cliente implements Runnable, AssuntoObservavel {
+    List<Observador> observadores = new ArrayList<Observador>();
     Socket s;
     PrintWriter out;
     BufferedReader in;
     Thread t;
     Integer passo = 0;
+    boolean pooling;
 
     static final String RECEBE_MENSAGEM_PUCLICA = "$:->mensagem";
     static final String RECEBE_MENSAGEM_PRIVADA = "$:->privado";
@@ -29,15 +31,10 @@ public class Cliente extends Observable implements Runnable {
 
     private static final String CRLF = "\r\n"; // newline
 
-    public Cliente(String host, int port){
+    public Cliente(String host, int port, boolean pooling){
+        this.pooling = pooling;
         setup(host, port);
         start();
-    }
-
-    @Override
-    public void notifyObservers(Object arg) {
-        super.setChanged();
-        super.notifyObservers(arg);
     }
 
     private void setup(String host, int port) {
@@ -73,36 +70,46 @@ public class Cliente extends Observable implements Runnable {
         out.flush();
     }
 
-    public void receberMensagem() {
+    private  void verificarMensagem(String mensagem){
+        MensagemServer tipo = Protocolo.parseMensagemServer(mensagem);
+
+        switch (tipo){
+            case MENSAGEM_PUCLICA: notificarObservadores(mensagem.substring(RECEBE_MENSAGEM_PUCLICA.length() + 1));
+                break;
+            case MENSAGEM_PRIVADA:
+                String x[] = mensagem.split(" ");
+
+                notificarObservadores("MENSAGEM PRIVADA DE " + x[1] + ": " + x[2]);
+                break;
+            case SAIU_SALA:
+                String z[] = mensagem.split(" ");
+                notificarObservadores(z[1] + " " + z[2] + " " + z[3] + " " + z[4]);
+                notificarLogout(z[1]);
+                break;
+            case ENTROU_SALA:
+                String y[] = mensagem.split(" ");
+                notificarObservadores(y[1] + "Entrou na sala ");
+                break;
+            case ENVIO_LISTA:
+                passo++;
+                mensagem += "@@u@@" + mensagem;
+                notificarObservadores(mensagem);
+                break;
+            case RECEBE_STATUS:
+                notificarObservadores(mensagem.substring(RECEBE_STATUS.length() + 1));
+                break;
+            case INVALIDA: notificarObservadores(mensagem);
+                break;
+        }
+    }
+
+    public void receberMensagem(){
         try {
             String msg = in.readLine();
 
-            if (msg.startsWith(RECEBE_MENSAGEM_PUCLICA)) {
-                String x[] = msg.split(" ");
-
-                notifyObservers(msg.substring(RECEBE_MENSAGEM_PUCLICA.length() + 1));
-            } else if (msg.startsWith(RECEBE_MENSAGEM_PRIVADA)) {
-                String x[] = msg.split(" ");
-
-                notifyObservers("MENSAGEM PRIVADA" + x[1] + ": " + x[2]);
-            } else if (msg.startsWith(RECEBE_SAIR_SALA)) {
-                String x[] = msg.split(" ");
-                notifyObservers(x[1] + " " + x[2] + " " + x[3] + " " + x[4]);
-            } else if (msg.startsWith(RECEBE_ENTROU_SALA)) {
-                String x[] = msg.split(" ");
-                notifyObservers("Entrou na sala " + x[1]);
-            } else if (msg.startsWith(RECEBE_USUARIO)) {
-                passo++;
-                msg += "@@u@@" + msg;
-                notifyObservers(msg);
-            } else if (msg.startsWith(RECEBE_STATUS)) {
-                notifyObservers(msg.substring(RECEBE_STATUS.length() + 1));
-            } else {
-                notifyObservers(msg);
-            }
+            verificarMensagem(msg);
         } catch (NullPointerException ex){
-            notifyObservers("O servidor caiu");
-            stop();
+            serverClosed();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -113,10 +120,25 @@ public class Cliente extends Observable implements Runnable {
         t.start();
     }
 
-    public void stop(){
+    private void serverClosed(){
+        notificarObservadores("O servidor caiu");
+
+        for(int i = 0; i < 5; i++){
+            notificarObservadores("A aplicação vai fechar em " + (i + 1));
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+
+        closeStrams();
+
+        System.exit(0);
+    }
+
+    private void closeStrams(){
         try {
-            passo++;
-            enviarMensagem("/sair");
             out.close();
             in.close();
             s.close();
@@ -125,10 +147,46 @@ public class Cliente extends Observable implements Runnable {
         }
     }
 
+    public void stop(){
+        this.pooling = false;
+        passo++;
+        enviarMensagem("/sair");
+        closeStrams();
+        try {
+            this.t.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
     @Override
     public void run() {
-        while(true){
+        while(pooling){
             receberMensagem();
+        }
+    }
+
+    @Override
+    public void registrarObservador(Observador obj) {
+        observadores.add(obj);
+    }
+
+    @Override
+    public void removerObservador(Observador obj) {
+        observadores.remove(obj);
+    }
+
+    @Override
+    public void notificarObservadores(String obj) {
+        for(Observador o:observadores){
+            o.atualizar(obj);
+        }
+    }
+
+    @Override
+    public void notificarLogout(String obj) {
+        for(Observador o:observadores){
+            o.removerLista(obj);
         }
     }
 }

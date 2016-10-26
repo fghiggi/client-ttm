@@ -1,6 +1,7 @@
 package view;
 
 import core.Cliente;
+import core.Observador;
 import javafx.scene.input.KeyCode;
 
 import javax.swing.*;
@@ -12,7 +13,7 @@ import java.util.Observer;
 /**
  * Created by slave00 on 19/10/16.
  */
-public class ChatView extends JFrame implements Observer {
+public class ChatView extends JFrame implements Observador {
     private JList<String> listaUsuarios;
     private JTextArea areaMensagens;
     private JTextField campoMensagem;
@@ -26,7 +27,7 @@ public class ChatView extends JFrame implements Observer {
 
     public void startUp(Cliente cli){
         this.cli = cli;
-        cli.addObserver(this);
+        cli.registrarObservador(this);
     }
 
     public void build(){
@@ -95,11 +96,11 @@ public class ChatView extends JFrame implements Observer {
     }
 
     @Override
-    public void update(Observable o, Object arg) {
-        final Object finalArg = arg;
+    public void atualizar(String obj) {
+        final Object finalArg = obj;
 
-        if(arg.toString().contains("@@u@@")){
-            String uu = arg.toString().split(" ")[2];
+        if(obj.toString().contains("@@u@@")){
+            String uu = obj.toString().split(" ")[2];
             DefaultListModel dlm = (DefaultListModel) listaUsuarios.getModel();
 
             if(!dlm.contains(uu)){
@@ -113,6 +114,15 @@ public class ChatView extends JFrame implements Observer {
             };
 
             SwingUtilities.invokeLater(updateTxtMensagens);
+        }
+    }
+
+    @Override
+    public void removerLista(String obj) {
+        DefaultListModel dlm = (DefaultListModel) listaUsuarios.getModel();
+
+        if(dlm.contains(obj)){
+            dlm.removeElement(obj);
         }
     }
 }
