@@ -1,5 +1,6 @@
 package core;
 
+import com.feevale.protocolo.MensagemCliente;
 import com.feevale.protocolo.MensagemServer;
 import com.feevale.protocolo.Protocolo;
 
@@ -12,26 +13,16 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
 
-public class Cliente implements Runnable, AssuntoObservavel {
-    List<Observador> observadores = new ArrayList<Observador>();
-    Socket s;
-    PrintWriter out;
-    BufferedReader in;
-    Thread t;
-    Integer passo = 0;
-    boolean pooling;
+public class Cliente implements Runnable, EventosServidor {
+    private List<Observador> observadores = new ArrayList<>();
+    private Socket s;
+    private PrintWriter out;
+    private BufferedReader in;
+    private Thread t;
+    private boolean pooling;
+    private boolean conectado = false;
 
-    static final String RECEBE_MENSAGEM_PUCLICA = "$:->mensagem";
-    static final String RECEBE_MENSAGEM_PRIVADA = "$:->privado";
-    static final String RECEBE_USUARIO = "$:->usuario";
-    static final String RECEBE_ENTROU_SALA = "$:->entrou";
-    static final String RECEBE_STATUS = "$:->status";
-    static final String RECEBE_SAIR_SALA = "$:->sair";
-    static final String ENVIO_MENSAGEM_PUCLICA = "/mensagem";
-    static final String ENVIO_MENSAGEM_PRIVADA = "/privado";
-    static final String ENVIO_LISTA = "/lista";
-
-    private static final String CRLF = "\r\n"; // newline
+    private static final String QUEBRA_DE_LINHA = "\r\n";
 
     public Cliente(String host, int port, boolean pooling){
         this.pooling = pooling;
@@ -52,57 +43,58 @@ public class Cliente implements Runnable, AssuntoObservavel {
         }
     }
 
-    public void enviarMensagem(String msg){
-        String um = msg + CRLF;
-
-        if(passo >= 2){
-            um += ENVIO_MENSAGEM_PUCLICA + " " + um;
-        }
-        out.write(um);
-        out.flush();
-
-        if(passo == 0)
-            passo++;
-    }
-
-    public void enviarMensagem(String msg, String destino){
-        String um = msg + CRLF;
-
-        out.write(ENVIO_MENSAGEM_PRIVADA + " " + destino + " " + um);
+    private void enviarMensagem(String msg){
+        out.write(msg + QUEBRA_DE_LINHA);
         out.flush();
     }
 
     private  void verificarMensagem(String mensagem){
         MensagemServer tipo = Protocolo.parseMensagemServer(mensagem);
+        String args[];
 
         switch (tipo){
-            case MENSAGEM_PUCLICA: notificarObservadores(mensagem.substring(RECEBE_MENSAGEM_PUCLICA.length() + 1));
+            case MENSAGEM_PUCLICA:
+                args = mensagem.split(" ");
+
+                notificarObservadores(String.format("%s diz: %s", args[1], args[2]));
                 break;
             case MENSAGEM_PRIVADA:
-                String x[] = mensagem.split(" ");
+                args = mensagem.split(" ");
 
-                notificarObservadores("MENSAGEM PRIVADA DE " + x[1] + ": " + x[2]);
+                notificarObservadores(String.format("Mensagem privada de %s: %s",args[1], args[2]));
                 break;
             case SAIU_SALA:
-                String z[] = mensagem.split(" ");
-                notificarObservadores(z[1] + " " + z[2] + " " + z[3] + " " + z[4]);
-                notificarLogout(z[1]);
+                notificarObservadores(mensagem.substring(MensagemServer.SAIU_SALA.mensagem.length() + 1));
+
+                notificarLogout(mensagem.split(" ")[1]);
                 break;
             case ENTROU_SALA:
-                String y[] = mensagem.split(" ");
-                notificarObservadores(y[1] + "Entrou na sala ");
+                args = mensagem.split(" ");
+
+                notificarObservadores(String.format("%s Entrou na sala.", args[1]));
                 break;
             case ENVIO_LISTA:
-                passo++;
-                mensagem += "@@u@@" + mensagem;
-                notificarObservadores(mensagem);
+                conectado = true;
+
+                notificarLista(mensagem);
                 break;
             case RECEBE_STATUS:
-                notificarObservadores(mensagem.substring(RECEBE_STATUS.length() + 1));
+                notificarObservadores(mensagem.substring(MensagemServer.RECEBE_STATUS.mensagem.length() + 1));
                 break;
             case INVALIDA: notificarObservadores(mensagem);
                 break;
         }
+    }
+
+    public void enviarMensagemPrivada(String mensagem, String destinatario){
+        enviarMensagem(String.format("%s %s %s", MensagemCliente.PRIVADO.mensagem, destinatario, mensagem));
+    }
+
+    public void enviarMensagemPublica(String mensagem){
+        if(conectado)
+            enviarMensagem(String.format("%s %s", MensagemCliente.MENSAGEM.mensagem, mensagem));
+        else
+            enviarMensagem(mensagem);
     }
 
     public void receberMensagem(){
@@ -123,23 +115,30 @@ public class Cliente implements Runnable, AssuntoObservavel {
     }
 
     private void serverClosed(){
-        notificarObservadores("O servidor caiu");
+        notificarObservadores("O servidor caiu :S");
 
-        for(int i = 0; i < 5; i++){
-            notificarObservadores("A aplicação vai fechar em " + (i + 1));
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+        dormir(3000);
+
+        for(int i = 5; i > 0; i--){
+            notificarObservadores(String.format("A aplicação vai fechar em %s", i));
+
+            dormir(1000);
         }
 
-        closeStrams();
+        closeStreams();
 
         System.exit(0);
     }
 
-    private void closeStrams(){
+    private void dormir(int milis){
+        try {
+            Thread.sleep(milis);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void closeStreams(){
         try {
             out.close();
             in.close();
@@ -151,9 +150,10 @@ public class Cliente implements Runnable, AssuntoObservavel {
 
     public void stop(){
         this.pooling = false;
-        passo++;
-        enviarMensagem("/sair");
-        closeStrams();
+
+        enviarMensagem(MensagemCliente.SAIR.mensagem);
+
+        closeStreams();
         try {
             this.t.join();
         } catch (InterruptedException e) {
@@ -174,11 +174,6 @@ public class Cliente implements Runnable, AssuntoObservavel {
     }
 
     @Override
-    public void removerObservador(Observador obj) {
-        observadores.remove(obj);
-    }
-
-    @Override
     public void notificarObservadores(String obj) {
         for(Observador o:observadores){
             o.atualizar(obj);
@@ -189,6 +184,13 @@ public class Cliente implements Runnable, AssuntoObservavel {
     public void notificarLogout(String obj) {
         for(Observador o:observadores){
             o.removerLista(obj);
+        }
+    }
+
+    @Override
+    public void notificarLista(String obj) {
+        for(Observador o:observadores){
+            o.adicionarLista(obj);
         }
     }
 }

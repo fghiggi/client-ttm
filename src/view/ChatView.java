@@ -59,11 +59,12 @@ public class ChatView extends JFrame implements Observador {
         ActionListener sendListener = new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 String str = campoMensagem.getText();
+
                 if (str != null && str.trim().length() > 0){
                     if(listaUsuarios.getSelectedValue() != null){
-                        cli.enviarMensagem(str, listaUsuarios.getSelectedValue());
+                        cli.enviarMensagemPrivada(str, listaUsuarios.getSelectedValue());
                     }else {
-                        cli.enviarMensagem(str);
+                        cli.enviarMensagemPublica(str);
                     }
                 }
 
@@ -97,24 +98,8 @@ public class ChatView extends JFrame implements Observador {
 
     @Override
     public void atualizar(String obj) {
-        final Object finalArg = obj;
-
-        if(obj.toString().contains("@@u@@")){
-            String uu = obj.toString().split(" ")[2];
-            DefaultListModel dlm = (DefaultListModel) listaUsuarios.getModel();
-
-            if(!dlm.contains(uu)){
-                dlm.addElement(uu);
-            }
-            //SwingUtilities.invokeLater(listaUsuarios.);
-        }else {
-            Runnable updateTxtMensagens = () -> {
-                areaMensagens.append(finalArg.toString());
-                areaMensagens.append("\n");
-            };
-
-            SwingUtilities.invokeLater(updateTxtMensagens);
-        }
+        areaMensagens.append(obj);
+        areaMensagens.append("\n");
     }
 
     @Override
@@ -123,6 +108,17 @@ public class ChatView extends JFrame implements Observador {
 
         if(dlm.contains(obj)){
             dlm.removeElement(obj);
+        }
+    }
+
+    @Override
+    public void adicionarLista(String obj) {
+        DefaultListModel dlm = (DefaultListModel) listaUsuarios.getModel();
+
+        String usuario = obj.split(" ")[1];
+
+        if(!dlm.contains(usuario)){
+            dlm.addElement(usuario);
         }
     }
 }
